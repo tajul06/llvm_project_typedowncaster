@@ -18,3 +18,8 @@ add_definitions(${LLVM_DEFINITIONS})
 
 # Add the pass directory
 add_subdirectory(lib)
+
+# Add the test directory if it exists
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test)
+  add_subdirectory(test)
+endif()
