@@ -161,11 +161,11 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
     }
     
     if (Ty->isVectorTy()) {
-      Type *ElemTy = cast<VectorType>(Ty)->getElementType();
+      VectorType *VecTy = cast<VectorType>(Ty);
+      Type *ElemTy = VecTy->getElementType();
       Type *OptimizedElemTy = getOptimizedType(ElemTy, Ctx);
       if (OptimizedElemTy != ElemTy) {
-        ElementCount EC = cast<VectorType>(Ty)->getElementCount();
-        return VectorType::get(OptimizedElemTy, EC);
+        return VectorType::get(OptimizedElemTy, VecTy->getElementCount());
       }
     }
     
@@ -178,8 +178,10 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
         Type *ElemTy = StructTy->getElementType(i);
         Type *OptimizedElemTy = getOptimizedType(ElemTy, Ctx);
         Elements.push_back(OptimizedElemTy);
-        if (OptimizedElemTy != ElemTy)
+        if (OptimizedElemTy != ElemTy) {
           Modified = true;
+          NumStructFieldsOptimized++;  // Add this line
+        }
       }
       
       if (Modified) {
@@ -309,6 +311,10 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
     unsigned OriginalSize = F.getParent()->getDataLayout().getTypeAllocSize(AllocaTy);
     unsigned OptimizedSize = F.getParent()->getDataLayout().getTypeAllocSize(OptimizedTy);
     NumTotalBytesReduced += (OriginalSize - OptimizedSize);
+
+    if (AllocaTy->isDoubleTy() && OptimizedTy->isFloatTy()) {
+      ++NumFloatToFloatOptimized;
+    }
     
     return true;
   }
@@ -363,6 +369,15 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
     unsigned OriginalSize = M.getDataLayout().getTypeAllocSize(GVType);
     unsigned OptimizedSize = M.getDataLayout().getTypeAllocSize(OptimizedTy);
     NumTotalBytesReduced += (OriginalSize - OptimizedSize);
+
+    if (GVType->isDoubleTy() && OptimizedTy->isFloatTy()) {
+      ++NumFloatToFloatOptimized;
+    }
+
+    // Make the original global internal linkage if external - helps LLVM clean it up
+    if (!GV->hasLocalLinkage()) {
+      GV->setLinkage(GlobalValue::InternalLinkage);
+    }
   }
 
   void rewriteUses(Function &F) {
@@ -396,7 +411,7 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
           Value *NewPtr = Tracker.getReplacement(Ptr);
           
           Type *OriginalType = LI->getType();
-          Type *NewPtrElemTy = cast<PointerType>(NewPtr->getType())->getElementType();
+          Type *NewPtrElemTy = NewPtr->getType()->getPointerElementType();
           
           // Create load from the new memory location
           LoadInst *NewLoad = Builder.CreateLoad(NewPtrElemTy, NewPtr, LI->getName() + ".downcasted");
@@ -419,7 +434,7 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
           IRBuilder<> Builder(SI);
           Value *NewPtr = Tracker.getReplacement(Ptr);
           Value *ValToStore = SI->getValueOperand();
-          Type *NewPtrElemTy = cast<PointerType>(NewPtr->getType())->getElementType();
+          Type *NewPtrElemTy = NewPtr->getType()->getPointerElementType();
           
           // Cast the value to the new type if needed
           Value *NewValToStore = createCastIfNeeded(Builder, ValToStore, NewPtrElemTy);
@@ -449,7 +464,7 @@ struct TypeDowncaster : public PassInfoMixin<TypeDowncaster> {
           }
           
           Value *NewGEP = Builder.CreateGEP(
-              cast<PointerType>(NewPtr->getType())->getElementType(),
+              NewPtr->getType()->getPointerElementType(),
               NewPtr, Indices, GEP->getName() + ".optimized");
           
           Tracker.addReplacement(GEP, NewGEP);

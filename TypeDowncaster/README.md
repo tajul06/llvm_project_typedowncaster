@@ -1,103 +1,38 @@
-# TypeDowncaster - An LLVM Optimization Pass for Data Type Downcasting
+# TypeDowncaster
 
-TypeDowncaster is a standalone LLVM optimization pass designed to identify and downcast data types in your code when it is safe to do so. This pass aims to reduce memory usage and potentially improve performance by using smaller data types where larger ones are not necessary.
+An LLVM optimization pass that automatically downcasts unnecessarily large data types (such as 64-bit integers to 32-bit integers and double-precision floating-point values to single-precision) when it is safe to do so.
 
-## Features
-
-- **Integer Downcasting**: Converts 64-bit integers (`i64`) to 32-bit integers (`i32`) when the value range allows
-- **Floating-point Precision Reduction**: Converts `double` to `float` when precision loss is acceptable
-- **Composite Type Optimization**: Optimizes arrays, vectors, and struct fields containing overly-large types
-- **Memory Allocation Optimization**:
-  - Rewrites stack-allocated variables (`alloca` instructions) 
-  - Rewrites global variables
-  - Preserves all attributes like alignment, volatility, etc.
-- **Safe Transformations**: Uses LLVM's ScalarEvolution for range analysis to ensure transformations are safe
-
-## Build Instructions
-
-### Prerequisites
-
-- CMake (3.13.4 or newer)
-- LLVM (same version as your target)
-- C++ compiler with C++17 support
-
-### Building
+## Building TypeDowncaster
 
 ```bash
-# Clone this repository
-git clone https://github.com/yourusername/TypeDowncaster.git
-cd TypeDowncaster
-
 # Create build directory
 mkdir build && cd build
 
-# Configure with CMake
-# You may need to set LLVM_DIR to point to your LLVM build or installation
+# Configure with CMake (replace with your LLVM build directory)
 cmake -DLLVM_DIR=/path/to/llvm/build ..
 
-# Build the project
+# Build the plugin
 make
 ```
 
-## Usage
-
-### As an LLVM opt Tool Plugin
+## Using TypeDowncaster
 
 ```bash
-# Run with opt tool (from LLVM)
+# Basic usage
 opt -load-pass-plugin=./lib/TypeDowncaster.so -passes=type-downcaster input.ll -o output.ll
 
-# Add verbose output for debugging
+# With statistics
+opt -load-pass-plugin=./lib/TypeDowncaster.so -passes=type-downcaster -stats input.ll -o output.ll
+
+# With debug output
 opt -load-pass-plugin=./lib/TypeDowncaster.so -passes=type-downcaster -debug-only=typedowncaster input.ll -o output.ll
 ```
 
-### Integrate with Other Passes
+## Features
 
-You can also include the TypeDowncaster pass in a larger optimization pipeline:
+- Downcasts 64-bit integers to 32-bit integers when safe
+- Converts double-precision floats to single-precision where precision loss is acceptable
+- Optimizes stack allocations, global variables, and struct fields
+- Uses LLVM's ScalarEvolution framework to ensure safety
 
-```bash
-opt -load-pass-plugin=./lib/TypeDowncaster.so -passes='default<O2>,type-downcaster' input.ll -o output.ll
-```
-
-## Example
-
-### Before Optimization
-
-```llvm
-define void @example() {
-  %ptr = alloca i64
-  store i64 42, i64* %ptr
-  %val = load i64, i64* %ptr
-  ret void
-}
-```
-
-### After Optimization
-
-```llvm
-define void @example() {
-  %ptr.optimized = alloca i32
-  store i32 42, i32* %ptr.optimized
-  %val.downcasted = load i32, i32* %ptr.optimized
-  %val = sext i32 %val.downcasted to i64
-  ret void
-}
-```
-
-## Statistics
-
-The pass collects the following statistics that can be displayed using `-stats`:
-
-- `NumAllocasOptimized`: Number of stack allocations optimized
-- `NumGlobalsOptimized`: Number of global variables optimized
-- `NumStructFieldsOptimized`: Number of struct fields optimized
-- `NumFloatToFloatOptimized`: Number of double to float conversions
-- `NumTotalBytesReduced`: Total bytes saved in memory allocations
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the Apache License 2.0 with LLVM Exceptions - see the LICENSE file for details.
+For complete documentation, see the [Documentation.md](Documentation.md) file.
